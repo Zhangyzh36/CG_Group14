@@ -1,6 +1,6 @@
 #include "SkyboxShader.h"
 
-SkyboxShader::SkyboxShader() :Shader("shaders/skybox.vs", "shaders/skybox.fs")
+SkyboxShader::SkyboxShader() :Shader("shaders/glsl/skybox.vs", "shaders/glsl/skybox.fs")
 {
 
 }

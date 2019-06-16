@@ -5,7 +5,10 @@ const float Car::turnAngle = 0.5f;
 void Car::move(const float t) {
   originAngle = angle;
   position += speed * t * direction;
+  velocity = direction * speed;
 }
+
+
 
 void Car::speedup(const float t) {
 	if (speed < abs(this->maxSpeed))
@@ -49,10 +52,19 @@ void Car::friction(const float t)
 	}
 }
 
+void Car::brake()
+{
+	speed = 0;
+}
+void Car::accelarate(const float t)
+{
+	
+}
+
 Car::Car(const string& path) {
   speed = 0.f;
   a = 1.06f;
-  fa = 0.005f;
+  fa = 0.5f;
   maxSpeed = 20.f;
   direction = glm::vec3(-1, 0, 0);
   angle = 0.0;

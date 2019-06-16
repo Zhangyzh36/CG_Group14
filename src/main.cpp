@@ -5,10 +5,20 @@ using namespace std;
 // window params
 float SCR_WIDTH = 1600;
 float SCR_HEIGHT = 800;
-const float SKYBOX_SIZE = 500.0f;
+const float SKYBOX_SIZE = 800.0f;
 // -------------------------------
 // shadow params
 unsigned int depthMapFBO;
+unsigned int intermediateDepthMapFBO;
+
+unsigned int quadVAO;
+unsigned int quadVBO;
+unsigned int framebuffer;
+unsigned int textureColorBufferMultiSampled;
+unsigned int intermediateFBO;
+unsigned int screenTexture;
+
+
 float SHADOW_WIDTH = 1000, SHADOW_HEIGHT = 1000;
 float sleft = -10, sright = 10, sbottom = -10, stop = 10, sfar_plane = 77.f, snear_plane = 1.0;
 // -------------------------------
@@ -30,10 +40,14 @@ float rotation = 0.0f;
 // camera
 // camera 
 
+float  particleScale= 2.35;
  
 float preAngle = 0; 
 float relativeDirection = 18; 
 float relativeHeight = 5; 
+
+glm::vec3 particleOffset = glm::vec3(0.0, 0.4, 0.0);
+
 Camera camera(glm::vec3(relativeDirection, -0.5 + relativeHeight, 0)); 
 // -------------------------------
 // game objs
@@ -54,6 +68,19 @@ void initShadow();
 void mouseCallback(GLFWwindow*, double xpos, double ypos);
 void move(GLfloat dtime, Car&);
 
+void RenderText(Shader &shader, std::string text, GLfloat x, GLfloat y, GLfloat scale, glm::vec3 color);
+void initTextShader(Shader& shader);
+
+
+void initFrameBuffer();
+void initIntermediateBuffer();
+void renderScreenQuad(Shader &shader);
+
+void blitBufferColor();
+void blitBufferDepth();
+
+
+
 int main() {
 	GLfloat curFrame = 0.0f, lastFrame = 0.0f;
 	camera.yaw = 190;
@@ -67,19 +94,27 @@ int main() {
 	if (window == NULL)
 		return -1;
 	
-	// std::vector<std::string> skyboxTextures = {
-	// 	"res/sky/right.jpg",
-	// 	"res/sky/left.jpg",
-	// 	"res/sky/top.jpg",
-	// 	"res/sky/down.jpg",
-	// 	"res/sky/front.jpg",
-	// 	"res/sky/back.jpg"
-	// };
+	 std::vector<std::string> skyboxTextures = {
+		 "res/sky/sky_rt.jpg",
+
+		 "res/sky/sky_lf.jpg",
+
+		 "res/sky/sky_up.jpg",
+
+		 "res/sky/sky_dn.jpg",
+
+		 "res/sky/sky_bk.jpg",
+
+		 "res/sky/sky_ft.jpg"
+	 };
 	// // init renderer
 	RendererManager::init();
-	// SkyboxRenderer skybox(skyboxTextures, SKYBOX_SIZE);
+	 SkyboxRenderer skybox(skyboxTextures, SKYBOX_SIZE);
 	// init shadow
 	initShadow();
+	initFrameBuffer();
+	initIntermediateBuffer();
+
 	//float near_plane = 1.0f, far_plane = 77.5f;
 	
 	// ----------------------------------
@@ -96,6 +131,18 @@ int main() {
 	Shader entityShader("shaders/glsl/shadow_mapping.vs", "shaders/glsl/shadow_mapping.fs");
 	entityShader.use();
 	entityShader.setInt("shadowMap", 100);
+
+	Shader textShader("shaders/glsl/text.vs", "shaders/glsl/text.fs");
+	initTextShader(textShader);
+
+	Shader carParticleShader("shaders/glsl/car_particle.vs", "shaders/glsl/car_particle.fs");
+	Texture2D carParticleTexture("res/particle/gas2.jpg", GL_FALSE);
+
+	ParticleGenerator *Particles = new ParticleGenerator(carParticleShader, carParticleTexture, 700);
+	carParticleShader.setInt("sprite", 0);
+
+	Shader screenShader("shaders/glsl/screen.vs", "shaders/glsl/screen.fs");
+	screenShader.setInt("screenTexture", 0);
 
 	while (!glfwWindowShouldClose(window)) {
 		glm::mat4 lightProjection = glm::ortho(sleft, sright, sbottom, stop, snear_plane, sfar_plane);
@@ -114,24 +161,41 @@ int main() {
 		// render shadow
 		shadowMapping(shadowShader, lightSpaceMatrix);
 		// ----------------------------------
+		// render text
+		std::string t = "speed" + std::to_string(car.speed);
+		
+		// ----------------------------------
 		// render sky box
-		// skybox.render(camera.getViewMat(), projection);
+		//skybox.render(camera.getViewMat(), projection);
 		// ----------------------------------
 		// render scene
 		glActiveTexture(GL_TEXTURE0 + 100);
 		glBindTexture(GL_TEXTURE_2D, RendererManager::depthMap);
+		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+		glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		glEnable(GL_DEPTH_TEST);
+		//
 		renderScene(&entityShader);
-		// ----------------------------------
+		RenderText(textShader, t, 12.0f, 12.0f, 1.0f, glm::vec3(0.5, 0.8f, 0.2f));
+		GLfloat dt = curFrame - lastFrame;
+		Particles->Update(dt, car, 11, glm::vec3(-car.direction.x * particleScale, particleOffset.y - car.direction.y, -car.direction.z * particleScale));
+		Particles->Draw(camera.getViewMat(), projection);
 		// render imgui
 		renderImgui(true);
+		blitBufferColor();
+		// ----------------------------------
+		
 
 		move(curFrame - lastFrame, car);
 		lastFrame = curFrame;
 
+		renderScreenQuad(screenShader);
 		glfwMakeContextCurrent(window);
 		glfwSwapBuffers(window);
 		glfwPollEvents();
 	}
+	delete Particles;
 	return 0;
 }
 
@@ -219,7 +283,7 @@ void mouseCallback(GLFWwindow*, double xpos, double ypos) {
 	}
 	float xoffset = xpos - xPos;
 	float yoffset = yPos - ypos;
-	camera.mouseMoveHandler(-xoffset, -yoffset);
+	//camera.mouseMoveHandler(-xoffset, -yoffset);
 	xPos = xpos;
 	yPos = ypos;
 }
@@ -248,6 +312,11 @@ void move(GLfloat dtime, Car& car) {
 	}
 	if (keys[GLFW_KEY_D]) {
 		car.rotate(-Car::turnAngle);
+	}
+
+	if (keys[GLFW_KEY_E])
+	{
+		car.brake();
 	}
 
 	RendererManager::headlight.position.x = car.position.x + 3;
@@ -284,6 +353,7 @@ GLFWwindow* openGLallInit() {
 	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 
+	//glfwWindowHint(GLFW_SAMPLES, 4);
 	GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, "firWindow", NULL, NULL);
 	if (window == NULL)
 	{
@@ -304,6 +374,11 @@ GLFWwindow* openGLallInit() {
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 	// glfwSetCursorPosCallback(window, mouseCallback);
 	glfwSetKeyCallback(window, keyCallback);
+
+	glEnable(GL_CULL_FACE);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	//glEnable(GL_MULTISAMPLE);
 	return window;
 }
 
@@ -326,8 +401,239 @@ void renderImgui(bool menu) {
 	ImGui::SliderFloat("f", &sfar_plane, 0, 10000);
 	ImGui::SliderFloat("w", &SHADOW_WIDTH, 1000, 3600);
 	ImGui::SliderFloat("h", &SHADOW_HEIGHT, 1000, 10000);
-
+	ImGui::Text("particle offset");
+	ImGui::SliderFloat("offset y", &particleOffset.y, 0, 5);
+	ImGui::SliderFloat("particleScale", &particleScale, 1, 10);
 	ImGui::End();
 	ImGui::Render();
 	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+}
+struct Character {
+	GLuint TextureID;   // ID handle of the glyph texture
+	glm::ivec2 Size;    // Size of glyph
+	glm::ivec2 Bearing;  // Offset from baseline to left/top of glyph
+	GLuint Advance;    // Horizontal offset to advance to next glyph
+};
+
+std::map<GLchar, Character> Characters;
+GLuint textVAO, textVBO;
+
+void initTextShader(Shader& shader)
+{
+	// Compile and setup the shader
+	glm::mat4 projection = glm::ortho(0.0f, static_cast<GLfloat>(SCR_WIDTH), 0.0f, static_cast<GLfloat>(SCR_HEIGHT));
+	shader.use();
+	shader.setMat4("projection", projection);
+	//glUniformMatrix4fv(glGetUniformLocation(shader.Program, "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+
+	// FreeType
+	FT_Library ft;
+	// All functions return a value different than 0 whenever an error occurred
+	if (FT_Init_FreeType(&ft))
+		std::cout << "ERROR::FREETYPE: Could not init FreeType Library" << std::endl;
+
+	// Load font as face
+	FT_Face face;
+	if (FT_New_Face(ft, "res/fonts/arial.ttf", 0, &face))
+		std::cout << "ERROR::FREETYPE: Failed to load font" << std::endl;
+
+	// Set size to load glyphs as
+	FT_Set_Pixel_Sizes(face, 0, 48);
+
+	// Disable byte-alignment restriction
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+
+	// Load first 128 characters of ASCII set
+	for (GLubyte c = 0; c < 128; c++)
+	{
+		// Load character glyph 
+		if (FT_Load_Char(face, c, FT_LOAD_RENDER))
+		{
+			std::cout << "ERROR::FREETYTPE: Failed to load Glyph" << std::endl;
+			continue;
+		}
+		// Generate texture
+		GLuint texture;
+		glGenTextures(1, &texture);
+		glBindTexture(GL_TEXTURE_2D, texture);
+		glTexImage2D(
+			GL_TEXTURE_2D,
+			0,
+			GL_RED,
+			face->glyph->bitmap.width,
+			face->glyph->bitmap.rows,
+			0,
+			GL_RED,
+			GL_UNSIGNED_BYTE,
+			face->glyph->bitmap.buffer
+		);
+		// Set texture options
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		// Now store character for later use
+		Character character = {
+			texture,
+			glm::ivec2(face->glyph->bitmap.width, face->glyph->bitmap.rows),
+			glm::ivec2(face->glyph->bitmap_left, face->glyph->bitmap_top),
+			face->glyph->advance.x
+		};
+		Characters.insert(std::pair<GLchar, Character>(c, character));
+	}
+	glBindTexture(GL_TEXTURE_2D, 0);
+	// Destroy FreeType once we're finished
+	FT_Done_Face(face);
+	FT_Done_FreeType(ft);
+
+
+	// Configure VAO/VBO for texture quads
+	glGenVertexArrays(1, &textVAO);
+	glGenBuffers(1, &textVBO);
+	glBindVertexArray(textVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, textVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(GLfloat) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(GLfloat), 0);
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+}
+
+
+void initFrameBuffer()
+{
+	float quadVertices[] = {   // vertex attributes for a quad that fills the entire screen in Normalized Device Coordinates.
+							   // positions   // texCoords
+		-1.0f,  1.0f,  0.0f, 1.0f,
+		-1.0f, -1.0f,  0.0f, 0.0f,
+		1.0f, -1.0f,  1.0f, 0.0f,
+
+		-1.0f,  1.0f,  0.0f, 1.0f,
+		1.0f, -1.0f,  1.0f, 0.0f,
+		1.0f,  1.0f,  1.0f, 1.0f
+	};
+
+	
+	glGenVertexArrays(1, &quadVAO);
+	glGenBuffers(1, &quadVBO);
+	glBindVertexArray(quadVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+
+	
+	glGenFramebuffers(1, &framebuffer);
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+	// create a multisampled color attachment texture
+	
+	glGenTextures(1, &textureColorBufferMultiSampled);
+	glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, textureColorBufferMultiSampled);
+	glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 4, GL_RGB, SCR_WIDTH, SCR_HEIGHT, GL_TRUE);
+	glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, 0);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, textureColorBufferMultiSampled, 0);
+
+	unsigned int rbo;
+	glGenRenderbuffers(1, &rbo);
+	glBindRenderbuffer(GL_RENDERBUFFER, rbo);
+	glRenderbufferStorageMultisample(GL_RENDERBUFFER, 4, GL_DEPTH24_STENCIL8, SCR_WIDTH, SCR_HEIGHT);
+	glBindRenderbuffer(GL_RENDERBUFFER, 0);
+	glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, rbo);
+
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!" << endl;
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void initIntermediateBuffer()
+{
+	
+	glGenFramebuffers(1, &intermediateFBO);
+	glBindFramebuffer(GL_FRAMEBUFFER, intermediateFBO);
+	// create a color attachment texture
+	glGenTextures(1, &screenTexture);
+	glBindTexture(GL_TEXTURE_2D, screenTexture);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, screenTexture, 0);	// we only need a color buffer
+
+	if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+		cout << "ERROR::FRAMEBUFFER:: Intermediate framebuffer is not complete!" << endl;
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void renderScreenQuad(Shader & shader)
+{
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glEnable(GL_DEPTH_TEST);
+
+	// draw Screen quad
+	shader.use();
+	glBindVertexArray(quadVAO);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, screenTexture); // use the now resolved color attachment as the quad's texture
+	glDrawArrays(GL_TRIANGLES, 0, 6);
+
+}
+
+void blitBufferColor()
+{
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, framebuffer);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, intermediateFBO);
+	glBlitFramebuffer(0, 0, SCR_WIDTH, SCR_HEIGHT, 0, 0, SCR_WIDTH, SCR_HEIGHT, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+}
+
+void blitBufferDepth()
+{
+}
+
+
+void RenderText(Shader &shader, std::string text, GLfloat x, GLfloat y, GLfloat scale, glm::vec3 color)
+{
+	// Activate corresponding render state	
+	shader.use();
+	shader.setVec3("textColor", glm::vec3(color.x, color.y, color.z));
+	glActiveTexture(GL_TEXTURE0);
+	glBindVertexArray(textVAO);
+
+	// Iterate through all characters
+	std::string::const_iterator c;
+	for (c = text.begin(); c != text.end(); c++)
+	{
+		Character ch = Characters[*c];
+
+		GLfloat xpos = x + ch.Bearing.x * scale;
+		GLfloat ypos = y - (ch.Size.y - ch.Bearing.y) * scale;
+
+		GLfloat w = ch.Size.x * scale;
+		GLfloat h = ch.Size.y * scale;
+		// Update VBO for each character
+		GLfloat vertices[6][4] = {
+			{ xpos,     ypos + h,   0.0, 0.0 },
+		{ xpos,     ypos,       0.0, 1.0 },
+		{ xpos + w, ypos,       1.0, 1.0 },
+
+		{ xpos,     ypos + h,   0.0, 0.0 },
+		{ xpos + w, ypos,       1.0, 1.0 },
+		{ xpos + w, ypos + h,   1.0, 0.0 }
+		};
+		// Render glyph texture over quad
+		glBindTexture(GL_TEXTURE_2D, ch.TextureID);
+		// Update content of VBO memory
+		glBindBuffer(GL_ARRAY_BUFFER, textVBO);
+		glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // Be sure to use glBufferSubData and not glBufferData
+
+		glBindBuffer(GL_ARRAY_BUFFER, 0);
+		// Render quad
+		glDrawArrays(GL_TRIANGLES, 0, 6);
+		// Now advance cursors for next glyph (note that advance is number of 1/64 pixels)
+		x += (ch.Advance >> 6) * scale; // Bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
+	}
+	glBindVertexArray(0);
+	glBindTexture(GL_TEXTURE_2D, 0);
 }

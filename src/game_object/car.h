@@ -26,6 +26,8 @@ public:
   void friction(const float t);
   void draw(Shader* shader = nullptr) const;
   void rotate(const float);
+  void brake();
+  void accelarate(const float t);
   glm::mat4 getModelMat() const;
 };
 
