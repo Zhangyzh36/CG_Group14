@@ -12,9 +12,10 @@ class Entity {
 public:
   glm::vec3 position = glm::vec3(0, 0, 0);
   bool useVertColor = false;
+  int objNum = 1;
   glm::vec3 vertColor = glm::vec3(0, 0, 0);
-
   glm::vec3 velocity = glm::vec3(0, 0, 0);
+  virtual glm::mat4 getNextPosition(int i) const;
   virtual void draw(Shader* shader = nullptr) const = 0;
   virtual glm::mat4 getModelMat() const;
 };

@@ -10,7 +10,8 @@ void EntityRenderer::render(
     glm::mat4 lightSpaceMatrix,
     glm::vec3 lightPos,
     glm::vec3 viewPos,
-    glm::vec3 vertColor) {
+    glm::vec3 vertColor,
+	float time) {
   shader->use();
   shader->setBool("useVertColor", useVertColor);
   shader->setMat4("projection", projection);
@@ -20,7 +21,7 @@ void EntityRenderer::render(
   shader->setVec3("lightPos", lightPos);
   shader->setVec3("viewPos", viewPos);
   shader->setVec3("vertColor", vertColor);
-  shader->setFloat("ambient", 1.0f);
+  shader->setFloat("ambientFactor", abs((time - 12) / 12));
   shader->setFloat("diffuse", 1.0f);
   shader->setFloat("specular", 0.45f);
   entity->draw(shader);

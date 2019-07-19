@@ -1,6 +1,6 @@
 #include "car.h"
 
-const float Car::turnAngle = 0.5f;
+const float Car::turnAngle = 1.5f;
 
 void Car::move(const float t) {
   originAngle = angle;
@@ -63,14 +63,14 @@ void Car::accelarate(const float t)
 
 Car::Car(const string& path) {
   speed = 0.f;
-  a = 1.06f;
+  a = 1.36f;
   fa = 0.5f;
   maxSpeed = 20.f;
   direction = glm::vec3(-1, 0, 0);
   angle = 0.0;
   originAngle = 0.0f;
   loader = new ModelLoader(path.c_str());
-  position = glm::vec3(0, -0.5, 0);
+  position = glm::vec3(0, 0.5, -110);
 }
 
 Car::~Car() {

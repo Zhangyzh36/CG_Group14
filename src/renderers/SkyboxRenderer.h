@@ -20,7 +20,7 @@ class SkyboxRenderer
 public:
 	SkyboxRenderer(std::vector<std::string> images, const float SIZE);
 	unsigned int getSkyboxTexture();
-	void render(glm::mat4 view, glm::mat4);
+	void render(glm::mat4 view, glm::mat4 projection, float time);
 
 private:
 	SkyboxShader shader;

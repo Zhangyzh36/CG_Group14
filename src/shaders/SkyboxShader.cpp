@@ -14,3 +14,8 @@ void SkyboxShader::loadMatrices(glm::mat4 view, glm::mat4 projection)
 	setMat4("view", view);
 	setMat4("projection", projection);
 }
+
+void SkyboxShader::setTime(float time)
+{
+	setFloat("time", time);
+}

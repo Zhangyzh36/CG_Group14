@@ -30,7 +30,7 @@ SkyboxRenderer::SkyboxRenderer(std::vector<std::string> images, const float SIZE
 	texture = Loader::getLoader()->loadCubemapTexture(images);
 }
 
-void SkyboxRenderer::render(glm::mat4 view, glm::mat4 projection) {
+void SkyboxRenderer::render(glm::mat4 view, glm::mat4 projection, float time) {
 	glDisable(GL_CULL_FACE);
 	shader.use();
 	glActiveTexture(GL_TEXTURE0);
@@ -39,6 +39,7 @@ void SkyboxRenderer::render(glm::mat4 view, glm::mat4 projection) {
 	glEnableVertexAttribArray(0);
 
 	shader.loadMatrices(view, projection);
+	shader.setTime(time);
 
 	glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, (void*)0);
 

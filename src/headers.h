@@ -12,6 +12,8 @@
 #include "game_object/City.h"
 #include "game_object/plane.h"
 
+#include "water/ocean.h"
+
 #include "camera/camera.h"
 #include "stb_image/stb_image.h"
 #include "renderers/RendererManager.h"
@@ -40,3 +42,9 @@
 #include "renderers/SkyboxRenderer.h"
 #include "renderers/entityRenderer.h"
 #include "renderers/RendererManager.h"
+#include "game_object/plane.h"
+#include "game_object/Tree.h"
+#include "game_object/Rock.h"
+#include "game_object/forest.h"
+#include "game_object/fence.h"
+#include "game_object/rabbit.h"

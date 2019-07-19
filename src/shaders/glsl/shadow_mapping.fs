@@ -57,8 +57,8 @@ void main()
     // vec3 color = texture(diffuseTexture, fs_in.TexCoords).rgb;
     vec3 color;
     if (fs_in.vertColor != vec3(-1, -1, -1))
-		color = texture(texture_diffuse_1, fs_in.TexCoords).rgb;
-        //color = fs_in.vertColor;
+		//color = texture(texture_diffuse_1, fs_in.TexCoords).rgb;
+        color = fs_in.vertColor;
     else
         color = texture(texture_diffuse_1, fs_in.TexCoords).rgb;
     vec3 normal = normalize(fs_in.Normal);

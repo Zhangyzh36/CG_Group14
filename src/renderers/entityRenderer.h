@@ -23,7 +23,8 @@ public:
     glm::mat4 lightSpaceMatrix,
     glm::vec3 lightPos,
     glm::vec3 viewPos,
-    glm::vec3 vertColor);
+    glm::vec3 vertColor,
+	float time);
 };
 
 #endif

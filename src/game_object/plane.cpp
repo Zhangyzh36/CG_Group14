@@ -16,15 +16,55 @@ void Plane::initPlaneVAO() {
 	glBindVertexArray(0);
 }
 
+void Plane::initTexture() {
+
+	glGenTextures(1, &texture);
+	int width, height, nrComponents;
+	unsigned char *data = stbi_load("./res/terrain/grass.png", &width, &height, &nrComponents, 0);
+	if (data) {
+		cout << height << " " << width << endl;
+		GLenum format;
+		if (nrComponents == 1)
+			format = GL_RED;
+		else if (nrComponents == 3)
+			format = GL_RGB;
+		else if (nrComponents == 4)
+			format = GL_RGBA;
+		glBindTexture(GL_TEXTURE_2D, texture);
+		glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, format, GL_UNSIGNED_BYTE, data);
+		glGenerateMipmap(GL_TEXTURE_2D);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		stbi_image_free(data);
+	}
+}
+
+
+
+
+
+
 void Plane::draw(Shader* shader) const {
-  shader->use();
-  glBindVertexArray(planeVAO);
-  glDrawArrays(GL_TRIANGLES, 0, 6);
+	shader->setInt("texture_diffuse_1", 98);
+	glActiveTexture(GL_TEXTURE0 + 98); 
+	glBindTexture(GL_TEXTURE_2D, texture); 
+	glActiveTexture(GL_TEXTURE0);
+	glBindVertexArray(planeVAO);
+	glDrawArrays(GL_TRIANGLES, 0, 36);
 	glBindVertexArray(0);
+}
+glm::mat4 Plane::getModelMat() const {
+
+	glm::mat4 model = glm::mat4(1.0f);
+	model = glm::scale(model, glm::vec3(10, 1, 10));
+	return model;
 }
 
 Plane::Plane() {
   initPlaneVAO();
+  initTexture();
 	this->useVertColor = true;
-	this->vertColor = glm::vec3(1, 1, 1);
+	this->vertColor = glm::vec3(-1, -1, -1);
 }

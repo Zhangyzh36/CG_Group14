@@ -21,6 +21,7 @@ class SkyboxShader : public Shader
 public:
 	SkyboxShader();
 	void loadMatrices(glm::mat4 view, glm::mat4 projection);
+	void setTime(float time);
 };
 
 #endif // SKYBOX_SHADER

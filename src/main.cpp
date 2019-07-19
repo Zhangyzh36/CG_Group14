@@ -6,6 +6,7 @@ using namespace std;
 float SCR_WIDTH = 1600;
 float SCR_HEIGHT = 800;
 const float SKYBOX_SIZE = 800.0f;
+float wordTime = 12.0;
 // -------------------------------
 // shadow params
 unsigned int depthMapFBO;
@@ -17,10 +18,11 @@ unsigned int framebuffer;
 unsigned int textureColorBufferMultiSampled;
 unsigned int intermediateFBO;
 unsigned int screenTexture;
+unsigned int oceanVAO, oceanVBO, oceanEBO;
 
 
-float SHADOW_WIDTH = 1000, SHADOW_HEIGHT = 1000;
-float sleft = -10, sright = 10, sbottom = -10, stop = 10, sfar_plane = 77.f, snear_plane = 1.0;
+float SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
+float sleft = -30, sright = 30, sbottom = -30, stop = 30, sfar_plane = 77.f, snear_plane = 1.0;
 // -------------------------------
 // control params
 float xPos = 0.0f;
@@ -40,18 +42,19 @@ float rotation = 0.0f;
 // camera
 // camera 
 
-float  particleScale= 2.35;
- 
-float preAngle = 0; 
-float relativeDirection = 18; 
-float relativeHeight = 5; 
+float  particleScale = 2.35;
+
+float preAngle = 0;
+float relativeDirection = 18;
+float relativeHeight = 5;
 
 glm::vec3 particleOffset = glm::vec3(0.0, 0.4, 0.0);
 
-Camera camera(glm::vec3(relativeDirection, -0.5 + relativeHeight, 0)); 
+Camera camera(glm::vec3(relativeDirection, -0.5 + relativeHeight, -110));
 // -------------------------------
 // game objs
 vector<Entity*> objs;
+vector<Shader*> shaders;
 // ------------------------------
 // projection
 glm::mat4 lightSpaceMatrix;
@@ -60,8 +63,13 @@ glm::mat4 projection = glm::perspective(glm::radians(45.0f), float(SCR_WIDTH) / 
 GLFWwindow* openGLallInit();
 void initImGui(GLFWwindow* window);
 void renderImgui(bool menu);
-void renderScene(Shader* shader);
+void renderScene(float time, bool isShadowMapping, Shader* shader = nullptr);
 void shadowMapping(Shader& simpleDepthShader, glm::mat4 lightSpaceMatrix);
+
+void initOceanBuffer(float *vertices, int vertexCount, unsigned int *indices, int indexCount);
+void renderOcean(Shader &waterShader, unsigned int skybox_texture, unsigned int heightMap, unsigned int normalMap, int indexCount);
+
+
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mode);
 void initShadow();
@@ -93,45 +101,81 @@ int main() {
 	initImGui(window);
 	if (window == NULL)
 		return -1;
-	
-	 std::vector<std::string> skyboxTextures = {
-		 "res/sky/sky_rt.jpg",
 
-		 "res/sky/sky_lf.jpg",
+	std::vector<std::string> skyboxTextures = {
+		"res/sky/sky_rt.jpg",
 
-		 "res/sky/sky_up.jpg",
+		"res/sky/sky_lf.jpg",
 
-		 "res/sky/sky_dn.jpg",
+		"res/sky/sky_up.jpg",
 
-		 "res/sky/sky_bk.jpg",
+		"res/sky/sky_dn.jpg",
 
-		 "res/sky/sky_ft.jpg"
-	 };
+		"res/sky/sky_bk.jpg",
+
+		"res/sky/sky_ft.jpg"
+	};
 	// // init renderer
 	RendererManager::init();
-	 SkyboxRenderer skybox(skyboxTextures, SKYBOX_SIZE);
+	SkyboxRenderer skybox(skyboxTextures, SKYBOX_SIZE);
 	// init shadow
 	initShadow();
-	initFrameBuffer();
-	initIntermediateBuffer();
+	//initFrameBuffer();
+	//initIntermediateBuffer();
 
 	//float near_plane = 1.0f, far_plane = 77.5f;
-	
+
 	// ----------------------------------
 	// init game object
 	Car car("res/car/newcar2/Avent.obj");
-	City city("res/Unity/3dsmax3.FBX");
+	//Car car("res/car/Mech_F_432/Material/mech_f_432.blend");
+	Tree tree("res/cgaxis_models_115_37_obj/cgaxis_models_115_37_obj.obj");
 	Plane plane;
+	Rock rock("res/rock/rock.obj");
+	Forest forest("res/maria-tach-field/source/Maria Field/Maria Tach.obj");
+	Fence fence("res/Fence_obj/fence wood.obj");
+	City city("res/WoodenCabinObj/WoodenCabinObj.obj");
+	Rabbit rabbit("res/Rabbit/Rabbit.obj");
 	objs.push_back(&plane);
 	objs.push_back(&car);
+	objs.push_back(&tree);
+	objs.push_back(&rock);
 	objs.push_back(&city);
+	objs.push_back(&forest);
+	objs.push_back(&fence);
+	objs.push_back(&rabbit);
 	// ----------------------------------
 	// shader
 	Shader shadowShader("shaders/glsl/shadow_depth.vs", "shaders/glsl/shadow_depth.fs");
 	Shader entityShader("shaders/glsl/shadow_mapping.vs", "shaders/glsl/shadow_mapping.fs");
+	Shader planeShader("shaders/glsl/1.model_loading.vs", "shaders/glsl/1.model_loading.fs");
+	Shader treeShader("shaders/glsl/1.model_loading.vs", "shaders/glsl/1.model_loading.fs");
+	Shader rockShader("shaders/glsl/1.model_loading.vs", "shaders/glsl/1.model_loading.fs");
+	Shader forestShader("shaders/glsl/1.model_loading.vs", "shaders/glsl/1.model_loading.fs");
+	Shader cityShader("shaders/glsl/1.model_loading.vs", "shaders/glsl/1.model_loading.fs");
+	Shader rabbitShader("shaders/glsl/1.model_loading.vs", "shaders/glsl/1.model_loading.fs");
+	Shader fenceShader("shaders/glsl/1.model_loading.vs", "shaders/glsl/1.model_loading.fs");
+	Shader waterShader("shaders/glsl/water.vs", "shaders/glsl/water.fs");
 	entityShader.use();
 	entityShader.setInt("shadowMap", 100);
-
+	planeShader.use();
+	planeShader.setInt("shadowMap", 100);
+	treeShader.use();
+	treeShader.setInt("shadowMap", 100);
+	forestShader.use();
+	forestShader.setInt("shadowMap", 100);
+	fenceShader.use();
+	fenceShader.setInt("shadowMap", 100);
+	rabbitShader.use();
+	rabbitShader.setInt("shadowMap", 100);
+	shaders.push_back(&planeShader);
+	shaders.push_back(&entityShader);
+	shaders.push_back(&treeShader);
+	shaders.push_back(&rockShader);
+	shaders.push_back(&cityShader);
+	shaders.push_back(&forestShader);
+	shaders.push_back(&fenceShader);
+	shaders.push_back(&rabbitShader);
 	Shader textShader("shaders/glsl/text.vs", "shaders/glsl/text.fs");
 	initTextShader(textShader);
 
@@ -143,6 +187,13 @@ int main() {
 
 	Shader screenShader("shaders/glsl/screen.vs", "shaders/glsl/screen.fs");
 	screenShader.setInt("screenTexture", 0);
+
+	// **************************** OCEAN ***********************************
+	Ocean ocean(glm::vec2(0.2f, 2.0f), 64, 8, 0.05f, 0, 0, 0.55);
+	//Ocean ocean(glm::vec2(0.2f, 2.0f), 16, 64, 0.05f, 0, 0, 1);
+	ocean.generateWave((float)glfwGetTime());
+	initOceanBuffer(ocean.vertices, ocean.vertexCount, ocean.indices, ocean.indexCount);
+	//***************************************************************************
 
 	while (!glfwWindowShouldClose(window)) {
 		glm::mat4 lightProjection = glm::ortho(sleft, sright, sbottom, stop, snear_plane, sfar_plane);
@@ -162,35 +213,44 @@ int main() {
 		shadowMapping(shadowShader, lightSpaceMatrix);
 		// ----------------------------------
 		// render text
-		std::string t = "speed" + std::to_string(car.speed);
-		
+		std::string t = "speed: " + std::to_string(car.speed);
+
 		// ----------------------------------
 		// render sky box
-		//skybox.render(camera.getViewMat(), projection);
+		wordTime += curFrame - lastFrame;
+		if (wordTime > 24)
+			wordTime = 0;
+		skybox.render(camera.getViewMat(), projection, wordTime);
 		// ----------------------------------
 		// render scene
 		glActiveTexture(GL_TEXTURE0 + 100);
 		glBindTexture(GL_TEXTURE_2D, RendererManager::depthMap);
-		glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
-		glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+		//glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+		//glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+		//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		glEnable(GL_DEPTH_TEST);
 		//
-		renderScene(&entityShader);
+		renderScene(wordTime,false);
 		RenderText(textShader, t, 12.0f, 12.0f, 1.0f, glm::vec3(0.5, 0.8f, 0.2f));
 		GLfloat dt = curFrame - lastFrame;
 		Particles->Update(dt, car, 11, glm::vec3(-car.direction.x * particleScale, particleOffset.y - car.direction.y, -car.direction.z * particleScale));
 		Particles->Draw(camera.getViewMat(), projection);
+		// ----------------------------------
+
+		//************************************
+		ocean.generateWave((float)glfwGetTime());
+		renderOcean(waterShader, skybox.getSkyboxTexture(), ocean.heightMap, ocean.normalMap, ocean.indexCount);
+		//************************************
+
 		// render imgui
 		renderImgui(true);
-		blitBufferColor();
-		// ----------------------------------
-		
+		//blitBufferColor();
+
 
 		move(curFrame - lastFrame, car);
 		lastFrame = curFrame;
 
-		renderScreenQuad(screenShader);
+		//renderScreenQuad(screenShader);
 		glfwMakeContextCurrent(window);
 		glfwSwapBuffers(window);
 		glfwPollEvents();
@@ -199,25 +259,56 @@ int main() {
 	return 0;
 }
 
-void renderScene(Shader* shader) {
+void renderScene(float time, bool isShadowMapping, Shader* shader) {
+
 	for (int i = 0; i < objs.size(); ++i) {
-		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, objs[i]->position);
-		if (i != 0) {
-			model = objs[i]->getModelMat();
+		if (objs[i]->objNum != 1)
+		{
+			for (int j = 0; j < objs[i]->objNum; j++)
+			{
+				glm::mat4 model = objs[i]->getNextPosition(j);
+				if (!isShadowMapping)
+				{
+					shader = shaders[i];
+				}
+				EntityRenderer::render(
+					shader,
+					objs[i],
+					objs[i]->useVertColor,
+					projection,
+					camera.getViewMat(),
+					model,
+					lightSpaceMatrix,
+					RendererManager::headlight.position,
+					camera.position,
+					objs[i]->vertColor,
+					time
+				);
+			}
 		}
-		EntityRenderer::render(
-			shader,
-			objs[i],
-			objs[i]->useVertColor,
-			projection,
-			camera.getViewMat(),
-			model,
-			lightSpaceMatrix,
-			RendererManager::headlight.position,
-			camera.position,
-			objs[i]->vertColor
-		);
+		else
+		{
+			glm::mat4 model = objs[i]->getModelMat();
+
+			if (!isShadowMapping)
+			{
+				shader = shaders[i];
+			}
+			EntityRenderer::render(
+				shader,
+				objs[i],
+				objs[i]->useVertColor,
+				projection,
+				camera.getViewMat(),
+				model,
+				lightSpaceMatrix,
+				RendererManager::headlight.position,
+				camera.position,
+				objs[i]->vertColor,
+				time
+			);
+		}
+		
 	}
 }
 
@@ -228,7 +319,7 @@ void shadowMapping(Shader& simpleDepthShader, glm::mat4 lightSpaceMatrix) {
 	glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
 	glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
 	glClear(GL_DEPTH_BUFFER_BIT);
-	renderScene(&simpleDepthShader);
+	renderScene(wordTime, true, &simpleDepthShader);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	glViewport(0, 0, SCR_WIDTH, SCR_HEIGHT);
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -301,11 +392,11 @@ void move(GLfloat dtime, Car& car) {
 	if (car.speed != 0)
 	{
 		car.move(dtime);
-		 glm::vec3 relativePosition = glm::vec3(-relativeDirection * car.direction.x, relativeHeight, -relativeDirection * car.direction.z);
-		 camera.position = car.position + relativePosition;
-		 camera.yaw -= car.angle - preAngle;
-		 preAngle = car.angle;
-		 camera.updateCamera();
+		glm::vec3 relativePosition = glm::vec3(-relativeDirection * car.direction.x, relativeHeight, -relativeDirection * car.direction.z);
+		camera.position = car.position + relativePosition;
+		camera.yaw -= car.angle - preAngle;
+		preAngle = car.angle;
+		camera.updateCamera();
 	}
 	if (keys[GLFW_KEY_A]) {
 		car.rotate(Car::turnAngle);
@@ -375,9 +466,7 @@ GLFWwindow* openGLallInit() {
 	// glfwSetCursorPosCallback(window, mouseCallback);
 	glfwSetKeyCallback(window, keyCallback);
 
-	glEnable(GL_CULL_FACE);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	
 	//glEnable(GL_MULTISAMPLE);
 	return window;
 }
@@ -513,7 +602,7 @@ void initFrameBuffer()
 		1.0f,  1.0f,  1.0f, 1.0f
 	};
 
-	
+
 	glGenVertexArrays(1, &quadVAO);
 	glGenBuffers(1, &quadVBO);
 	glBindVertexArray(quadVAO);
@@ -524,11 +613,11 @@ void initFrameBuffer()
 	glEnableVertexAttribArray(1);
 	glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
 
-	
+
 	glGenFramebuffers(1, &framebuffer);
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
 	// create a multisampled color attachment texture
-	
+
 	glGenTextures(1, &textureColorBufferMultiSampled);
 	glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, textureColorBufferMultiSampled);
 	glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, 4, GL_RGB, SCR_WIDTH, SCR_HEIGHT, GL_TRUE);
@@ -549,7 +638,7 @@ void initFrameBuffer()
 
 void initIntermediateBuffer()
 {
-	
+
 	glGenFramebuffers(1, &intermediateFBO);
 	glBindFramebuffer(GL_FRAMEBUFFER, intermediateFBO);
 	// create a color attachment texture
@@ -595,6 +684,9 @@ void blitBufferDepth()
 
 void RenderText(Shader &shader, std::string text, GLfloat x, GLfloat y, GLfloat scale, glm::vec3 color)
 {
+	glEnable(GL_CULL_FACE);
+	glEnable(GL_BLEND);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	// Activate corresponding render state	
 	shader.use();
 	shader.setVec3("textColor", glm::vec3(color.x, color.y, color.z));
@@ -636,4 +728,54 @@ void RenderText(Shader &shader, std::string text, GLfloat x, GLfloat y, GLfloat 
 	}
 	glBindVertexArray(0);
 	glBindTexture(GL_TEXTURE_2D, 0);
+
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_BLEND);
+}
+
+void initOceanBuffer(float *vertices, int vertexCount, unsigned int *indices, int indexCount) {
+	glGenVertexArrays(1, &oceanVAO);
+	glBindVertexArray(oceanVAO);
+	glGenBuffers(1, &oceanVBO);
+	glBindBuffer(GL_ARRAY_BUFFER, oceanVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(float) * vertexCount, vertices, GL_DYNAMIC_DRAW);
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+	glGenBuffers(1, &oceanEBO);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, oceanEBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(unsigned int) * indexCount, indices, GL_STATIC_DRAW);
+}
+
+void renderOcean(Shader &waterShader, unsigned int skybox_texture, unsigned int heightMap, unsigned int normalMap, int indexCount) {
+	glm::vec3 deepWaterColorSunset = glm::vec3(powf(0.14f, 2.2f),
+		powf(0.15f, 2.2f),
+		powf(0.16f, 2.2f));
+	glm::vec3 deepWaterColorSunny = glm::vec3(powf(0.11f, 2.2f),
+		powf(0.18f, 2.2f),
+		powf(0.35f, 2.2f));
+
+	waterShader.use();
+	// Set vertex shader data
+	waterShader.setMat4("view", camera.getViewMat());
+	waterShader.setMat4("projection", projection);
+	waterShader.setMat4("model", glm::mat4(1.0f));
+	waterShader.setFloat("time", (float)glfwGetTime());
+	// Set fragment shader data
+	waterShader.setVec3("viewPos", camera.position);
+	waterShader.setVec3("lightDir", glm::vec3(-1.0f, 1.0f, -1.0f));
+	waterShader.setVec3("lightPos", glm::vec3(-1000.0f, -1000.0f, 5000.0f));
+	waterShader.setVec3("diffuse", deepWaterColorSunset);
+	waterShader.setVec3("ambient", deepWaterColorSunset);
+	waterShader.setVec3("specular", glm::vec3(1.0f, 1.0f, 1.0f));
+	waterShader.setInt("heightMap", 0);
+	waterShader.setInt("normalMap", 1);
+	waterShader.setInt("skybox", 2);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, heightMap);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, normalMap);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_CUBE_MAP, skybox_texture);
+	glBindVertexArray(oceanVAO);
+	glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, nullptr);
 }
